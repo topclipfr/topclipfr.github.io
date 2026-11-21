@@ -49,15 +49,15 @@ a{color:var(--y)}
   <div class="card"><h2>Envoyer une vidéo à clipper</h2>
     <textarea id="link" placeholder="Colle un lien YouTube ou Twitch (un ou plusieurs)"></textarea>
     <button class="primary" id="send">Envoyer au PC</button>
-    <p class="mut">Astuce : dans l'app YouTube, <b>Partager → TopClipFR</b> envoie la vidéo directement. Le PC la récupère à son prochain réveil et crée les clips pendant les heures creuses.</p></div>
+    <p class="mut">Astuce : dans l'app YouTube, <b>Partager → TopClipFR</b> envoie la vidéo directement. Le PC la récupère à son prochain rallumage, crée les clips et les programme.</p></div>
 
   <div class="card"><h2>Automatique</h2>
     <div class="switch"><div>Réveil mercredi et samedi à 15 h<small>Le PC vérifie tes chaînes ; s'il n'y a rien de nouveau, il se rendort et te prévient.</small></div>
       <label class="tg"><input type="checkbox" id="verif" checked><i></i></label></div></div>
 
   <div class="card"><h2>Commandes</h2>
-    <div class="row"><button class="ghost" data-cmd="statut">Statut</button><button class="ghost" data-cmd="maintenant">Traiter maintenant</button></div>
-    <p class="mut">« Traiter maintenant » ignore les heures creuses pour les 6 prochaines heures. Les commandes s'appliquent dès que le PC est réveillé (il passe au moins toutes les 10 h).</p></div>
+    <button class="ghost" data-cmd="statut">Statut du PC</button>
+    <p class="mut">Les commandes s'appliquent dès que le PC est rallumé (il passe au moins toutes les 10 h).</p></div>
 
   <div class="card"><h2>Notifications du PC</h2>
     <div id="msgs" class="mut">Chargement…</div>
