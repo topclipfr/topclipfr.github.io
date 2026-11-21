@@ -1,0 +1,19 @@
+{
+  "name": "TopClipFR",
+  "short_name": "TopClipFR",
+  "description": "Envoie des vidéos à clipper à ton PC et suis tes publications.",
+  "start_url": "app.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0B0B0F",
+  "theme_color": "#0B0B0F",
+  "icons": [
+    {"src": "logo.png", "sizes": "800x800", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ],
+  "share_target": {
+    "action": "app.html",
+    "method": "GET",
+    "params": {"title": "title", "text": "text", "url": "url"}
+  }
+}
