@@ -1,5 +1,5 @@
 // Service worker minimal : rend l'app installable (écran d'accueil + menu Partager d'Android).
-const CACHE = "topclipfr-v1";
+const CACHE = "topclipfr-v2";
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["app.html", "logo.png", "manifest.webmanifest"])));
   self.skipWaiting();

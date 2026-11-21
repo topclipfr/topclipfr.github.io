@@ -20,6 +20,7 @@ textarea{min-height:84px;resize:vertical}
 button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:13px 14px;cursor:pointer;width:100%}
 .primary{background:var(--y);color:var(--bg);margin-top:10px}
 .ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+button:disabled{opacity:.35}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .switch{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .switch small{color:var(--mut);display:block}
@@ -39,6 +40,20 @@ button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:13px 14p
 .mut{color:var(--mut);font-size:14px}
 a{color:var(--y)}
 #setup{display:none}
+.status{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.pill{font-weight:800;padding:6px 12px;border-radius:999px;background:var(--line)}
+.pill.on{background:var(--ok);color:#06240f}
+.pill.sleep{background:#3b82f6;color:#fff}
+.pill.off{background:var(--bad);color:#fff}
+.pi{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.pi:first-child{border-top:0}
+.pi time{flex:none;width:86px;color:var(--y);font-weight:700;font-size:14px}
+.pi div{min-width:0}
+.pi b{display:block;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pi small{color:var(--mut)}
+.sub{font-size:13px;color:var(--y);margin:14px 0 4px;font-weight:700}
+.bar{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:var(--y)}
 </style></head><body>
 <header><img src="logo.png" alt=""><h1>TOP CLIP <span>FR</span></h1></header>
 
@@ -46,18 +61,24 @@ a{color:var(--y)}
   <p class="mut">Ouvre cette page depuis le QR code affiché dans ClipForge (Réglages → Téléphone) pour la relier à ton PC.</p></div>
 
 <div id="main">
+  <div class="card"><h2>Mon PC</h2>
+    <div class="status"><span class="pill" id="pc-pill">…</span><span id="pc-age" class="mut"></span></div>
+    <p id="pc-detail" class="mut"></p>
+    <div class="row"><button class="ghost" id="pc-on">Allumer</button><button class="ghost" id="pc-off">Éteindre</button></div>
+    <p class="mut" id="pc-help"></p></div>
+
   <div class="card"><h2>Envoyer une vidéo à clipper</h2>
     <textarea id="link" placeholder="Colle un lien YouTube ou Twitch (un ou plusieurs)"></textarea>
     <button class="primary" id="send">Envoyer au PC</button>
-    <p class="mut">Astuce : dans l'app YouTube, <b>Partager → TopClipFR</b> envoie la vidéo directement. Le PC la récupère à son prochain rallumage, crée les clips et les programme.</p></div>
+    <p class="mut">Astuce : dans l'app YouTube, <b>Partager → TopClipFR</b> envoie la vidéo directement.</p></div>
+
+  <div class="card"><h2>Planning</h2>
+    <div id="plan" class="mut">Chargement…</div></div>
 
   <div class="card"><h2>Automatique</h2>
     <div class="switch"><div>Réveil mercredi et samedi à 15 h<small>Le PC vérifie tes chaînes ; s'il n'y a rien de nouveau, il se rendort et te prévient.</small></div>
       <label class="tg"><input type="checkbox" id="verif" checked><i></i></label></div></div>
 
-  <div class="card"><h2>Commandes</h2>
-    <button class="ghost" data-cmd="statut">Statut du PC</button>
-    <p class="mut">Les commandes s'appliquent dès que le PC est rallumé (il passe au moins toutes les 10 h).</p></div>
 
   <div class="card"><h2>Notifications du PC</h2>
     <div id="msgs" class="mut">Chargement…</div>
@@ -82,13 +103,66 @@ async function send(text) {
   if (!r.ok) throw new Error("Envoi impossible (" + r.status + ")");
 }
 async function sendUi(text, ok) {
-  try { await send(text); toast(ok); setTimeout(loadMsgs, 1500); } catch (e) { toast(e.message); }
+  try { await send(text); toast(ok); setTimeout(loadAll, 1500); setTimeout(loadAll, 8000); } catch (e) { toast(e.message); }
 }
+
+// ---------------------------------------------------------------- état du PC
+let ST = null;  // dernier état publié par le PC (signe de vie toutes les 4 min quand il est allumé)
+const pcState = () => {
+  if (!ST) return "unknown";
+  const age = Date.now() / 1000 - ST.t;
+  if (!ST.awake) return "sleep";
+  return age < 9 * 60 ? "on" : "off";
+};
+function renderPc() {
+  const st = pcState(), pill = $("#pc-pill");
+  pill.className = "pill " + ({ on: "on", sleep: "sleep", off: "off" }[st] || "");
+  pill.textContent = { on: "Allumé", sleep: "En veille prolongée", off: "Éteint ou hors ligne", unknown: "Inconnu" }[st];
+  $("#pc-age").textContent = ST ? `vu ${fmtRel(ST.t)}` : "";
+  const d = [];
+  if (st === "on") {
+    if (ST.busy) d.push(`En cours : ${ST.busy}.`);
+    if (ST.hold_until > Date.now() / 1000) d.push(`Maintenu allumé jusqu'à ${fmtH(ST.hold_until)}.`);
+    else if (ST.auto_off) d.push("S'éteindra seul quand il n'aura plus rien à faire.");
+  }
+  if (st === "sleep") d.push(ST.next_wake ? `Rallumage automatique : ${fmt(ST.next_wake)}.` : "Aucun rallumage prévu.");
+  if (st === "off") d.push("Plus de nouvelles depuis un moment : éteint complètement, sans internet, ou ClipForge fermé.");
+  if (st === "unknown") d.push("Aucune nouvelle du PC ces 12 dernières heures.");
+  $("#pc-detail").textContent = d.join(" ");
+  $("#pc-help").innerHTML = st === "on" ? "« Éteindre » le passe en veille prolongée : il se rallumera seul pour les publications."
+    : "<b>Allumer</b> est pris en compte dès que le PC se rallume (au plus tard au prochain rallumage automatique). Pour l'allumer à l'instant, utilise le <b>réveil (Wake-on-LAN)</b> dans l'app de ta box internet.";
+  $("#pc-off").disabled = st !== "on";
+}
+function renderPlan() {
+  if (!ST) { $("#plan").textContent = "Le planning s'affichera dès que le PC aura donné des nouvelles."; return; }
+  const P = { youtube: "YT", tiktok: "TikTok", instagram: "Insta" };
+  const row = (t, title, small) => `<div class="pi"><time>${t}</time><div><b>${esc(title)}</b><small>${small}</small></div></div>`;
+  let h = "";
+  if (ST.queue?.length) h += `<div class="sub">En préparation</div>` + ST.queue.map((v) =>
+    `<div class="pi"><time>${v.status === "queued" ? "En file" : Math.round((v.progress || 0) * 100) + " %"}</time><div><b>${esc(v.title)}</b><small>${esc(v.stage || "")}</small>${v.status === "processing" ? `<div class="bar"><i style="width:${Math.round((v.progress || 0) * 100)}%"></i></div>` : ""}</div></div>`).join("");
+  h += `<div class="sub">Programmés</div>` + (ST.planned?.length ? ST.planned.map((c) => row(fmtShort(c.at), c.title, c.plats.map((p) => P[p] || p).join(" · "))).join("")
+    : `<p class="mut">Aucun clip programmé${ST.ready_unscheduled ? ` (${ST.ready_unscheduled} prêt${ST.ready_unscheduled > 1 ? "s" : ""} à valider dans ClipForge)` : ""}.</p>`);
+  if (ST.published?.length) h += `<div class="sub">Derniers publiés</div>` + ST.published.map((c) => row(fmtShort(c.t), c.title, c.plats.map((p) => P[p] || p).join(" · "))).join("");
+  $("#plan").innerHTML = h;
+}
+async function loadState() {
+  if (!TOPIC) return;
+  try {
+    const r = await fetch(`${SERVER}/${TOPIC}-state/json?poll=1&since=12h`);
+    const last = (await r.text()).split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.event === "message").pop();
+    ST = last ? JSON.parse(last.message) : null;
+  } catch { /* hors ligne : on garde le dernier état */ }
+  renderPc(); renderPlan();
+}
+const loadAll = () => { loadState(); loadMsgs(); };
+
+$("#pc-on").onclick = () => sendUi("allumer", pcState() === "on" ? "Le PC restera allumé 3 h" : "Demande envoyée : appliquée dès que le PC se rallume");
+$("#pc-off").onclick = () => { if (confirm("Éteindre le PC (veille prolongée) ? Il se rallumera seul pour les prochaines publications.")) sendUi("éteindre", "Extinction demandée"); };
 
 $("#send").onclick = () => {
   const v = $("#link").value.trim();
   if (!/https?:\/\//.test(v)) return toast("Colle un lien YouTube ou Twitch");
-  sendUi(v, "Envoyé : le PC le traitera à son prochain réveil"); $("#link").value = "";
+  sendUi(v, pcState() === "on" ? "Envoyé : le PC commence les clips" : "Envoyé : traité dès que le PC se rallume"); $("#link").value = "";
 };
 document.querySelectorAll("[data-cmd]").forEach((b) => b.onclick = () => sendUi(b.dataset.cmd, "Commande envoyée"));
 const verif = $("#verif");
@@ -107,6 +181,10 @@ if (TOPIC && /https?:\/\//.test(shared)) {
 
 const fmt = (t) => new Date(t * 1000).toLocaleString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtH = (t) => new Date(t * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const fmtShort = (t) => { const d = new Date(t * 1000), now = new Date(); const same = d.toDateString() === now.toDateString();
+  return same ? fmtH(t) : d.toLocaleString("fr-FR", { weekday: "short", hour: "2-digit", minute: "2-digit" }); };
+const fmtRel = (t) => { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? "à l'instant" : m < 60 ? `il y a ${m} min` : `il y a ${Math.round(m / 60)} h`; };
 async function loadMsgs() {
   if (!TOPIC) return;
   try {
@@ -116,8 +194,13 @@ async function loadMsgs() {
       : "Aucune notification ces 12 dernières heures.";
   } catch { $("#msgs").textContent = "Pas de connexion au relais."; }
 }
-loadMsgs();
-if (TOPIC && window.EventSource) { const es = new EventSource(`${SERVER}/${TOPIC}/sse`); es.onmessage = () => loadMsgs(); }
+loadAll();
+if (TOPIC && window.EventSource) {
+  new EventSource(`${SERVER}/${TOPIC}/sse`).onmessage = () => loadMsgs();
+  new EventSource(`${SERVER}/${TOPIC}-state/sse`).onmessage = () => loadState();
+}
+setInterval(() => { if (!document.hidden) { loadState(); } }, 60000);  // le statut vieillit même sans message
+document.addEventListener("visibilitychange", () => { if (!document.hidden) loadAll(); });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body></html>
