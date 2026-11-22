@@ -94,12 +94,23 @@ const store = { get(k) { try { return localStorage.getItem(k); } catch { return 
 
 // le secret arrive dans le # (jamais envoyé au site), puis reste uniquement sur ce téléphone
 const h = new URLSearchParams(location.hash.slice(1));
-if (h.get("k")) { store.set("cf_topic", h.get("k")); store.set("cf_server", h.get("s") || "https://ntfy.sh"); history.replaceState(null, "", location.pathname); }
+if (h.get("k")) { store.set("cf_topic", h.get("k")); store.set("cf_server", h.get("s") || "https://ntfy.sh"); store.set("cf_key", h.get("h") || ""); history.replaceState(null, "", location.pathname); }
 const TOPIC = store.get("cf_topic"), SERVER = (store.get("cf_server") || "https://ntfy.sh").replace(/\/$/, "");
-if (!TOPIC) { $("#setup").style.display = "block"; $("#main").style.display = "none"; }
+// sans clé de signature (ancienne installation) : il faut rescanner le QR code de ClipForge
+if (!TOPIC || !store.get("cf_key")) { $("#setup").style.display = "block"; $("#main").style.display = "none"; }
 
+// chaque commande est signée avec la clé du QR code : sans elle, le PC refuse (même avec le lien)
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+async function sign(text) {
+  const key = store.get("cf_key");
+  if (!key) throw new Error("Rescanne le QR code dans ClipForge (Réglages → Téléphone)");
+  const ts = Math.floor(Date.now() / 1000), nonce = b64u(crypto.getRandomValues(new Uint8Array(12)));
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = b64u(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(`${ts}.${nonce}.${text}`)));
+  return `cf1.${ts}.${nonce}.${sig}.${text}`;
+}
 async function send(text) {
-  const r = await fetch(`${SERVER}/${TOPIC}-cmd`, { method: "POST", body: text });
+  const r = await fetch(`${SERVER}/${TOPIC}-cmd`, { method: "POST", body: await sign(text) });
   if (!r.ok) throw new Error("Envoi impossible (" + r.status + ")");
 }
 async function sendUi(text, ok) {
@@ -112,7 +123,7 @@ const pcState = () => {
   if (!ST) return "unknown";
   const age = Date.now() / 1000 - ST.t;
   if (!ST.awake) return "sleep";
-  return age < 9 * 60 ? "on" : "off";
+  return age < 35 * 60 ? "on" : "off";  // signe de vie toutes les 30 min (quota du relais gratuit)
 };
 function renderPc() {
   const st = pcState(), pill = $("#pc-pill");
@@ -126,7 +137,7 @@ function renderPc() {
     else if (ST.auto_off) d.push("S'éteindra seul quand il n'aura plus rien à faire.");
   }
   if (st === "sleep") d.push(ST.next_wake ? `Rallumage automatique : ${fmt(ST.next_wake)}.` : "Aucun rallumage prévu.");
-  if (st === "off") d.push("Plus de nouvelles depuis un moment : éteint complètement, sans internet, ou ClipForge fermé.");
+  if (st === "off") d.push("Plus de nouvelles depuis plus de 30 min : éteint complètement, sans internet, ou ClipForge fermé.");
   if (st === "unknown") d.push("Aucune nouvelle du PC ces 12 dernières heures.");
   $("#pc-detail").textContent = d.join(" ");
   $("#pc-help").innerHTML = st === "on" ? "« Éteindre » le passe en veille prolongée : il se rallumera seul pour les publications."
